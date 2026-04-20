@@ -1,143 +1,73 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analista Pro - Full Analysis v3.3</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <style>
-        :root { --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --danger: #e74c3c; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; }
+// --- NOVA LÓGICA DE CARREGAMENTO AUTOMÁTICO ---
+window.onload = async function() {
+    const salvo = localStorage.getItem('email_logado');
+    if(salvo) {
+        document.getElementById('emailAcesso').value = salvo;
+        await verificarAcesso(); // Valida o login
+        carregarBaseDoServidor(); // Busca os jogos no banco
+    }
+};
+
+async function carregarBaseDoServidor() {
+    const indicador = document.getElementById('indicadorDados');
+    indicador.innerHTML = `<span class="status-badge">⏳ Carregando Base...</span>`;
+    
+    try {
+        // Altere para a sua URL do Render
+        const response = await fetch('https://sistema-analisador.onrender.com/obter-base');
+        const dados = await response.json();
         
-        /* Estilo da Tela de Login */
-        #tela-bloqueio {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: var(--primary); display: flex; justify-content: center; align-items: center; z-index: 9999;
+        if (dados && dados.length > 0) {
+            // Converte os nomes das colunas do banco de volta para o formato do seu script de análise
+            dadosExcel = dados.map(j => ({
+                'Casa': j.casa,
+                'Visitante': j.visitante,
+                'Placar Casa': j.placar_casa,
+                'Placar Visitante': j.placar_visitante,
+                'Prob, Casa (1)': parseFloat(j.prob_casa),
+                'Prob, Empate (X)': parseFloat(j.prob_empate),
+                'Prob, Fora (2)': parseFloat(j.prob_fora)
+            }));
+            atualizarInterface(true);
+        } else {
+            atualizarInterface(false);
         }
-        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 90%; max-width: 400px; }
-        .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 5px; }
-        .btn-comprar { background: #f39c12; margin-top: 10px; }
+    } catch (err) {
+        console.error("Erro ao buscar dados:", err);
+        indicador.innerHTML = `<span class="status-badge badge-off">❌ Erro ao sincronizar</span>`;
+    }
+}
 
-        /* Estilos originais */
-        .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display:none; }
-        .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
-        .tab { padding: 12px 25px; cursor: pointer; border-radius: 8px 8px 0 0; background: #eee; }
-        .tab.active { background: var(--primary); color: white; }
-        .content { display: none; }
-        .content.active { display: block; }
-        .grid-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        .btn-limpar { background: var(--danger); margin-top: 10px; font-size: 12px; padding: 5px; width: auto; }
-        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 25px; }
-        .card { border: 1px solid #eee; padding: 15px; border-radius: 8px; }
-        .card h4 { margin-top: 0; color: var(--primary); border-bottom: 1px solid #eee; }
-        .stats-list { list-style: none; padding: 0; }
-        .stats-list li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #eee; }
-        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; display: inline-block; }
-        .badge-on { background: #d4edda; color: #155724; }
-        .badge-off { background: #f8d7da; color: #721c24; }
-        .no-data-alert { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 20px; border-radius: 8px; text-align: center; margin-top: 20px; grid-column: span 2; }
-    </style>
-</head>
-<body>
-
-<div id="tela-bloqueio">
-    <div class="login-box">
-        <h2>🎯 Analista Pro</h2>
-        <p>Acesso Restrito. Digite seu e-mail:</p>
-        <input type="email" id="emailAcesso" placeholder="seu@email.com">
-        <button onclick="verificarAcesso()">ENTRAR NO SISTEMA</button>
-        <button class="btn-comprar" onclick="window.open('https://www.asaas.com/c/g64s85n26xcdpvnj', '_blank')">QUERO ASSINAR AGORA</button>
-        <p id="msgErro" style="color:red; margin-top:10px; display:none;"></p>
-    </div>
-</div>
-
-<div class="container" id="app-principal">
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2>🎯 Analista Pro <small style="font-size: 12px; color: #666;">v3.3 - xG Stats</small></h2>
-        <div id="indicadorDados"></div>
-    </div>
-
-    <div class="tabs">
-        <div class="tab active" id="tab1" onclick="openTab('aba-importar')">Configurações/Base</div>
-        <div class="tab" id="tab2" onclick="openTab('aba-buscar')">Análise de Jogo</div>
-    </div>
-
-    <div id="aba-importar" class="content active">
-        <div id="areaUpload">
-            <h4>Importar Nova Base de Dados</h4>
-            <input type="file" id="fileInput" accept=".xlsx, .xls">
-        </div>
-        <div id="areaGerenciar" style="display:none; margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
-            <h4>Base de Dados Ativa</h4>
-            <p id="infoBase"></p>
-            <button class="btn-limpar" onclick="limparDados()">Apagar Base e Importar Nova</button>
-        </div>
-    </div>
-
-    <div id="aba-buscar" class="content">
-        <div class="grid-inputs">
-            <div><label>Prob. Casa (1)</label><input type="number" id="buscaCasa" step="0.01" value="0.50"></div>
-            <div><label>Prob. Empate (X)</label><input type="number" id="buscaEmpate" step="0.01" value="0.25"></div>
-            <div><label>Prob. Fora (2)</label><input type="number" id="buscaFora" step="0.01" value="0.25"></div>
-        </div>
-        <button onclick="buscarDados()">EXECUTAR ANÁLISE COMPLETA</button>
-        <div id="resultadoBusca" style="display:none;">
-            <p style="text-align: center; font-style: italic; color: #666;" id="infoFiltro"></p>
-            <div class="dashboard" id="dashboard"></div>
-        </div>
-    </div>
-</div>
-
-<script>
-    // --- LÓGICA DE ACESSO ---
-    async function verificarAcesso() {
-        const email = document.getElementById('emailAcesso').value;
-        const msgErro = document.getElementById('msgErro');
+// --- NOVA LÓGICA DE IMPORTAÇÃO (ENVIA PARA O BANCO) ---
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    
+    reader.onload = async function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const tempDados = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
         
-        if(!email) return alert("Digite um e-mail.");
+        const indicador = document.getElementById('indicadorDados');
+        indicador.innerHTML = `<span class="status-badge">📤 Enviando para o Servidor...</span>`;
 
         try {
-            // TROQUE ESTA URL PELA URL DO SEU RENDER
-            const urlRender = "https://sistema-analisador.onrender.com/validar";
-            
-            const response = await fetch(urlRender, {
+            // Envia para o Render salvar no PostgreSQL
+            const response = await fetch('https://sistema-analisador.onrender.com/importar-base', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email })
+                body: JSON.stringify({ jogos: tempDados })
             });
 
-            const data = await response.json();
-
-            if (data.autorizado) {
-                document.getElementById('tela-bloqueio').style.display = 'none';
-                document.getElementById('app-principal').style.display = 'block';
-                localStorage.setItem('email_logado', email);
+            if (response.ok) {
+                alert("Base salva com sucesso no Banco de Dados!");
+                carregarBaseDoServidor(); // Recarrega para mostrar na tela
             } else {
-                msgErro.innerText = "Acesso Negado: " + data.msg;
-                msgErro.style.display = "block";
+                alert("Erro ao salvar no servidor.");
             }
         } catch (err) {
-            alert("Erro ao conectar ao servidor. Verifique se o Render está ligado.");
+            alert("Erro de conexão ao tentar importar.");
         }
-    }
-
-    // Tentar login automático se já logou antes
-    window.addEventListener('load', () => {
-        const salvo = localStorage.getItem('email_logado');
-        if(salvo) {
-            document.getElementById('emailAcesso').value = salvo;
-            verificarAcesso();
-        }
-    });
-
-    // --- SEU CÓDIGO ORIGINAL ABAIXO ---
-    let dadosExcel = [];
-    const TOLERANCIA_MAXIMA = 0.10;
-
-    // ... (Mantenha todas as suas funções: atualizarInterface, openTab, buscarDados, etc.)
-    // Apenas certifique-se de manter o restante das funções que você já tinha.
-</script>
-</body>
-</html>
+    };
+    reader.readAsArrayBuffer(file);
+});
