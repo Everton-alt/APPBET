@@ -22,14 +22,13 @@
         .header-app { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 15px; }
         
         .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
-        .tab { padding: 12px 25px; cursor: pointer; border-radius: 8px 8px 0 0; background: #eee; font-weight: bold; color: #666; }
+        .tab { padding: 12px 25px; cursor: pointer; border-radius: 8px 8px 0 0; background: #eee; font-weight: bold; color: #666; display: none; } 
         .tab.active { background: var(--primary); color: white; }
-        #tab1 { display: none; } /* Oculto para usuários comuns */
+        #tab2 { display: block; } /* Aba de análise sempre visível */
 
         .content { display: none; }
         .content.active { display: block; }
         
-        /* Botões */
         button { padding: 12px; background: var(--accent); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; }
         button:hover { opacity: 0.9; }
         .btn-comprar { background: #f39c12; margin-top: 10px; width: 100%; }
@@ -47,6 +46,9 @@
         .card h4 { margin: 0 0 10px 0; color: var(--primary); font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         .stats-list { list-style: none; padding: 0; margin: 0; }
         .stats-list li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #eee; font-size: 14px; }
+
+        /* Botão customizado de upload */
+        .btn-upload { background: var(--primary); color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -77,10 +79,14 @@
     </div>
 
     <div id="aba-importar" class="content">
-        <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; border: 1px solid #ddd;">
-            <h4 style="margin-top:0;">📤 Upload de Base Global</h4>
-            <p style="font-size: 13px; color: #666;">Selecione o arquivo Excel para atualizar a base de dados de todos os usuários.</p>
-            <input type="file" id="fileInput" accept=".xlsx, .xls">
+        <div style="background: #f0f4f8; padding: 25px; border-radius: 12px; border: 2px dashed var(--primary);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <h3 style="margin: 0; color: var(--primary);">📤 Upload de Base Global</h3>
+                <label for="fileInput" class="btn-upload">IMPORTAR EXCEL</label>
+                <input type="file" id="fileInput" accept=".xlsx, .xls" style="display: none;">
+            </div>
+            <p style="color: #555; font-size: 13px; margin-top: 10px;">Atualize a base de dados de todos os usuários enviando um novo arquivo Excel.</p>
+            <p id="statusUpload" style="display:none; color: var(--accent); font-weight: bold; font-size: 12px;">⏳ Processando arquivo, aguarde...</p>
         </div>
     </div>
 
@@ -103,7 +109,7 @@
     let dadosExcel = [];
     const TOLERANCIA_MAXIMA = 0.10;
     const URL_RENDER = "https://sistema-analisador.onrender.com";
-    const SEU_EMAIL_ADM = "everton.cl@outlook.com"; // <-- ALTERE PARA O SEU E-MAIL
+    const SEU_EMAIL_ADM = "everton.cl@outlook.com"; 
 
     window.onload = async function() {
         const salvo = localStorage.getItem('email_logado');
@@ -114,35 +120,28 @@
     };
 
     async function verificarAcesso() {
-        const email = document.getElementById('emailAcesso').value;
+        const emailInput = document.getElementById('emailAcesso').value.trim().toLowerCase();
         const msgErro = document.getElementById('msgErro');
-        if(!email) return;
+        if(!emailInput) return;
 
         try {
             const response = await fetch(`${URL_RENDER}/validar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email })
+                body: JSON.stringify({ email: emailInput })
             });
             const data = await response.json();
 
             if (data.autorizado) {
-                // SUCESSO NO LOGIN
                 document.getElementById('tela-bloqueio').style.display = 'none';
                 document.getElementById('app-principal').style.display = 'block';
-                localStorage.setItem('email_logado', email);
+                localStorage.setItem('email_logado', emailInput);
 
-                // CONTROLE DE VISIBILIDADE ADM
-                if (email.toLowerCase() === SEU_EMAIL_ADM.toLowerCase()) {
+                if (emailInput === SEU_EMAIL_ADM) {
                     document.getElementById('tab1').style.display = 'block';
-                } else {
-                    document.getElementById('tab1').style.display = 'none';
-                    openTab('aba-buscar');
                 }
                 carregarBaseDoServidor();
             } else {
-                // FALHA NO LOGIN
-                sair(); // Limpa cache por segurança
                 msgErro.innerText = data.msg;
                 msgErro.style.display = "block";
             }
@@ -154,8 +153,7 @@
 
     function sair() {
         localStorage.removeItem('email_logado');
-        document.getElementById('app-principal').style.display = 'none';
-        document.getElementById('tela-bloqueio').style.display = 'flex';
+        location.reload();
     }
 
     async function carregarBaseDoServidor() {
@@ -181,12 +179,15 @@
         }
     }
 
-    // EVENTO DE UPLOAD (EXCLUSIVO ADM)
     document.getElementById('fileInput').addEventListener('change', function(e) {
-        const senhaAdm = prompt("Confirme sua SENHA DE ADMINISTRADOR:");
+        const statusTxt = document.getElementById('statusUpload');
+        const senhaAdm = prompt("Confirme sua SENHA (Henrique2026):");
         if (!senhaAdm) { this.value = ""; return; }
 
         const file = e.target.files[0];
+        if(!file) return;
+
+        statusTxt.style.display = "block";
         const reader = new FileReader();
         reader.onload = async function(evt) {
             const data = new Uint8Array(evt.target.result);
@@ -199,12 +200,12 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ jogos: tempDados, senha: senhaAdm })
                 });
-                const resData = await response.json();
                 if (response.ok) {
-                    alert("BASE ATUALIZADA GLOBALMENTE!");
+                    alert("✅ BASE ATUALIZADA GLOBALMENTE!");
                     carregarBaseDoServidor();
-                } else { alert(resData.erro || "Erro na autorização."); }
-            } catch (err) { alert("Erro de conexão ao enviar base."); }
+                } else { alert("❌ Erro na autorização."); }
+            } catch (err) { alert("❌ Erro de conexão."); }
+            finally { statusTxt.style.display = "none"; }
         };
         reader.readAsArrayBuffer(file);
     });
@@ -221,7 +222,7 @@
     }
 
     function buscarDados() {
-        if (dadosExcel.length === 0) return alert("Base de dados vazia. Peça ao ADM para importar.");
+        if (dadosExcel.length === 0) return alert("Base vazia.");
         const c = parseFloat(document.getElementById('buscaCasa').value);
         const e = parseFloat(document.getElementById('buscaEmpate').value);
         const f = parseFloat(document.getElementById('buscaFora').value);
@@ -238,12 +239,11 @@
         const dashboard = document.getElementById('dashboard');
         document.getElementById('resultadoBusca').style.display = "block";
         if (jogos.length === 0) {
-            dashboard.innerHTML = "<div style='grid-column: span 2; text-align:center;'>⚠️ Nenhum jogo similar encontrado na base.</div>";
+            dashboard.innerHTML = "<div style='grid-column: span 2; text-align:center;'>⚠️ Sem jogos similares.</div>";
             return;
         }
 
         let pesoTotal = 0; let stats = { gC: 0, gV: 0, vC: 0, vE: 0, vV: 0, ambos: 0, o25: 0 };
-
         jogos.forEach(j => {
             const p = j.peso; pesoTotal += p;
             const c = j['Placar Casa']; const v = j['Placar Visitante'];
@@ -254,13 +254,13 @@
         });
 
         const calc = (val) => (val / pesoTotal * 100).toFixed(1);
-        document.getElementById('infoFiltro').innerText = `Análise baseada nos ${jogos.length} jogos mais similares da história.`;
+        document.getElementById('infoFiltro').innerText = `Análise de ${jogos.length} jogos similares.`;
         
         dashboard.innerHTML = `
             <div class="card"><h4>⚽ xG (Gols Esperados)</h4><ul class="stats-list"><li>Casa: <b>${(stats.gC/pesoTotal).toFixed(2)}</b></li><li>Fora: <b>${(stats.gV/pesoTotal).toFixed(2)}</b></li></ul></div>
-            <div class="card"><h4>🏆 Probabilidades</h4><ul class="stats-list"><li>Vitória Casa: <b>${calc(stats.vC)}%</b></li><li>Empate: <b>${calc(stats.vE)}%</b></li><li>Vitória Fora: <b>${calc(stats.vV)}%</b></li></ul></div>
-            <div class="card"><h4>🔥 Mercados</h4><ul class="stats-list"><li>Ambos Marcam: <b>${calc(stats.ambos)}%</b></li><li>Over 2.5 Gols: <b>${calc(stats.o25)}%</b></li></ul></div>
-            <div class="card"><h4>🛡️ Chance Dupla</h4><ul class="stats-list"><li>1X (Casa ou Emp): <b>${calc(stats.vC+stats.vE)}%</b></li><li>X2 (Fora ou Emp): <b>${calc(stats.vE+stats.vV)}%</b></li></ul></div>
+            <div class="card"><h4>🏆 Probabilidades</h4><ul class="stats-list"><li>Casa: <b>${calc(stats.vC)}%</b></li><li>Empate: <b>${calc(stats.vE)}%</b></li><li>Fora: <b>${calc(stats.vV)}%</b></li></ul></div>
+            <div class="card"><h4>🔥 Mercados</h4><ul class="stats-list"><li>Ambos Marcam: <b>${calc(stats.ambos)}%</b></li><li>Over 2.5: <b>${calc(stats.o25)}%</b></li></ul></div>
+            <div class="card"><h4>🛡️ Chance Dupla</h4><ul class="stats-list"><li>1X: <b>${calc(stats.vC+stats.vE)}%</b></li><li>X2: <b>${calc(stats.vE+stats.vV)}%</b></li></ul></div>
         `;
     }
 </script>
