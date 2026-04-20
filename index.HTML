@@ -1,73 +1,231 @@
-// --- NOVA LÓGICA DE CARREGAMENTO AUTOMÁTICO ---
-window.onload = async function() {
-    const salvo = localStorage.getItem('email_logado');
-    if(salvo) {
-        document.getElementById('emailAcesso').value = salvo;
-        await verificarAcesso(); // Valida o login
-        carregarBaseDoServidor(); // Busca os jogos no banco
-    }
-};
-
-async function carregarBaseDoServidor() {
-    const indicador = document.getElementById('indicadorDados');
-    indicador.innerHTML = `<span class="status-badge">⏳ Carregando Base...</span>`;
-    
-    try {
-        // Altere para a sua URL do Render
-        const response = await fetch('https://sistema-analisador.onrender.com/obter-base');
-        const dados = await response.json();
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analista Pro - Full Analysis v3.3</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root { --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --danger: #e74c3c; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); padding: 20px; }
         
-        if (dados && dados.length > 0) {
-            // Converte os nomes das colunas do banco de volta para o formato do seu script de análise
-            dadosExcel = dados.map(j => ({
-                'Casa': j.casa,
-                'Visitante': j.visitante,
-                'Placar Casa': j.placar_casa,
-                'Placar Visitante': j.placar_visitante,
-                'Prob, Casa (1)': parseFloat(j.prob_casa),
-                'Prob, Empate (X)': parseFloat(j.prob_empate),
-                'Prob, Fora (2)': parseFloat(j.prob_fora)
-            }));
-            atualizarInterface(true);
-        } else {
-            atualizarInterface(false);
+        /* Tela de Bloqueio */
+        #tela-bloqueio {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: var(--primary); display: flex; justify-content: center; align-items: center; z-index: 9999;
         }
-    } catch (err) {
-        console.error("Erro ao buscar dados:", err);
-        indicador.innerHTML = `<span class="status-badge badge-off">❌ Erro ao sincronizar</span>`;
-    }
-}
-
-// --- NOVA LÓGICA DE IMPORTAÇÃO (ENVIA PARA O BANCO) ---
-document.getElementById('fileInput').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    const reader = new FileReader();
-    
-    reader.onload = async function(evt) {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const tempDados = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 90%; max-width: 400px; }
+        .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 5px; }
         
-        const indicador = document.getElementById('indicadorDados');
-        indicador.innerHTML = `<span class="status-badge">📤 Enviando para o Servidor...</span>`;
+        /* Container Principal */
+        .container { max-width: 900px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display:none; }
+        .header-app { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
+        .tabs { display: flex; gap: 5px; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+        .tab { padding: 12px 25px; cursor: pointer; border-radius: 8px 8px 0 0; background: #eee; }
+        .tab.active { background: var(--primary); color: white; }
+        #tab1 { display: none; } /* Escondido por padrão */
 
-        try {
-            // Envia para o Render salvar no PostgreSQL
-            const response = await fetch('https://sistema-analisador.onrender.com/importar-base', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jogos: tempDados })
-            });
+        .content { display: none; }
+        .content.active { display: block; }
+        
+        /* Botões */
+        button { padding: 12px; background: var(--accent); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .btn-comprar { background: #f39c12; margin-top: 10px; width: 100%; }
+        .btn-sair { background: var(--danger); padding: 5px 15px; font-size: 12px; margin-left: 10px; }
+        
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        .badge-on { background: #d4edda; color: #155724; }
+        .badge-off { background: #f8d7da; color: #721c24; }
+        
+        /* Grid de Análise */
+        .grid-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        .dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 25px; }
+        .card { border: 1px solid #eee; padding: 15px; border-radius: 8px; }
+        .stats-list { list-style: none; padding: 0; }
+        .stats-list li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed #eee; }
+    </style>
+</head>
+<body>
 
-            if (response.ok) {
-                alert("Base salva com sucesso no Banco de Dados!");
-                carregarBaseDoServidor(); // Recarrega para mostrar na tela
-            } else {
-                alert("Erro ao salvar no servidor.");
-            }
-        } catch (err) {
-            alert("Erro de conexão ao tentar importar.");
+<div id="tela-bloqueio">
+    <div class="login-box">
+        <h2>🎯 Analista Pro</h2>
+        <p>Acesso Restrito</p>
+        <input type="email" id="emailAcesso" placeholder="everton.cl@outlook.com">
+        <button style="width:100%" onclick="verificarAcesso()">ENTRAR</button>
+        <button class="btn-comprar" onclick="window.open('https://www.asaas.com/c/g64s85n26xcdpvnj', '_blank')">ASSINAR AGORA</button>
+        <p id="msgErro" style="color:red; margin-top:10px; display:none;"></p>
+    </div>
+</div>
+
+<div class="container" id="app-principal">
+    <div class="header-app">
+        <h2>🎯 Analista Pro <small style="font-size: 12px; color: #666;">v3.3</small></h2>
+        <div>
+            <span id="indicadorDados"></span>
+            <button class="btn-sair" onclick="sair()">Sair</button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab" id="tab1" onclick="openTab('aba-importar')">Configurações (ADM)</div>
+        <div class="tab active" id="tab2" onclick="openTab('aba-buscar')">Análise de Jogo</div>
+    </div>
+
+    <div id="aba-importar" class="content">
+        <h4>Atualizar Base Global</h4>
+        <input type="file" id="fileInput" accept=".xlsx, .xls">
+    </div>
+
+    <div id="aba-buscar" class="content active">
+        <div class="grid-inputs">
+            <div><label>Prob. Casa</label><input type="number" id="buscaCasa" step="0.01" value="0.50"></div>
+            <div><label>Prob. Empate</label><input type="number" id="buscaEmpate" step="0.01" value="0.25"></div>
+            <div><label>Prob. Fora</label><input type="number" id="buscaFora" step="0.01" value="0.25"></div>
+        </div>
+        <button style="width:100%" onclick="buscarDados()">EXECUTAR ANÁLISE</button>
+        <div id="resultadoBusca" style="display:none; margin-top:20px;">
+            <div class="dashboard" id="dashboard"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let dadosExcel = [];
+    const TOLERANCIA_MAXIMA = 0.10;
+    const URL_RENDER = "https://sistema-analisador.onrender.com";
+    const SEU_EMAIL_ADM = "henrique@seuemail.com"; // <-- MUDE PARA O SEU E-MAIL REAL
+
+    window.onload = async function() {
+        const salvo = localStorage.getItem('email_logado');
+        if(salvo) {
+            document.getElementById('emailAcesso').value = salvo;
+            await verificarAcesso();
         }
     };
-    reader.readAsArrayBuffer(file);
-});
+
+    async function verificarAcesso() {
+        const email = document.getElementById('emailAcesso').value;
+        if(!email) return;
+
+        try {
+            const response = await fetch(`${URL_RENDER}/validar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email })
+            });
+            const data = await response.json();
+
+            if (data.autorizado) {
+                document.getElementById('tela-bloqueio').style.display = 'none';
+                document.getElementById('app-principal').style.display = 'block';
+                localStorage.setItem('email_logado', email);
+
+                // MOSTRAR ABA ADM APENAS PARA VOCÊ
+                if (email.toLowerCase() === SEU_EMAIL_ADM.toLowerCase()) {
+                    document.getElementById('tab1').style.display = 'block';
+                } else {
+                    document.getElementById('tab1').style.display = 'none';
+                    openTab('aba-buscar');
+                }
+                carregarBaseDoServidor();
+            } else {
+                const erro = document.getElementById('msgErro');
+                erro.innerText = data.msg;
+                erro.style.display = "block";
+            }
+        } catch (err) { alert("Erro de conexão."); }
+    }
+
+    function sair() {
+        localStorage.removeItem('email_logado');
+        window.location.reload(); // Recarrega a página e volta para o bloqueio
+    }
+
+    async function carregarBaseDoServidor() {
+        const indicador = document.getElementById('indicadorDados');
+        indicador.innerHTML = `<span>⏳...</span>`;
+        try {
+            const response = await fetch(`${URL_RENDER}/obter-base`);
+            const dados = await response.json();
+            if (dados && dados.length > 0) {
+                dadosExcel = dados.map(j => ({
+                    'Casa': j.casa, 'Visitante': j.visitante,
+                    'Placar Casa': j.placar_casa, 'Placar Visitante': j.placar_visitante,
+                    'Prob, Casa (1)': parseFloat(j.prob_casa),
+                    'Prob, Empate (X)': parseFloat(j.prob_empate),
+                    'Prob, Fora (2)': parseFloat(j.prob_fora)
+                }));
+                indicador.innerHTML = `<span class="status-badge badge-on">● Online</span>`;
+            } else { indicador.innerHTML = `<span class="status-badge badge-off">○ Vazio</span>`; }
+        } catch (err) { indicador.innerHTML = `<span class="status-badge badge-off">❌ Erro</span>`; }
+    }
+
+    // Código de importação ADM
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+        const senhaAdm = prompt("Senha de ADM:");
+        if (!senhaAdm) return;
+        const file = e.target.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(evt) {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const tempDados = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+            try {
+                const response = await fetch(`${URL_RENDER}/importar-base`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jogos: tempDados, senha: senhaAdm })
+                });
+                if (response.ok) { alert("Base atualizada!"); carregarBaseDoServidor(); }
+                else { alert("Falha na autorização."); }
+            } catch (err) { alert("Erro."); }
+        };
+        reader.readAsArrayBuffer(file);
+    });
+
+    function openTab(tabName) {
+        let contents = document.getElementsByClassName("content");
+        for (let c of contents) c.classList.remove("active");
+        let tabs = document.getElementsByClassName("tab");
+        for (let t of tabs) t.classList.remove("active");
+        document.getElementById(tabName).classList.add("active");
+        if(tabName === 'aba-importar') document.getElementById('tab1').classList.add("active");
+        else document.getElementById('tab2').classList.add("active");
+    }
+
+    // Função de buscarDados e renderizarCards (mesma lógica anterior)
+    function buscarDados() {
+        if (dadosExcel.length === 0) return alert("Base vazia.");
+        const c = parseFloat(document.getElementById('buscaCasa').value);
+        const e = parseFloat(document.getElementById('buscaEmpate').value);
+        const f = parseFloat(document.getElementById('buscaFora').value);
+        let similares = dadosExcel.map(jogo => {
+            let dist = Math.sqrt(Math.pow(jogo['Prob, Casa (1)'] - c, 2) + Math.pow(jogo['Prob, Empate (X)'] - e, 2) + Math.pow(jogo['Prob, Fora (2)'] - f, 2));
+            return { ...jogo, dist, peso: dist === 0 ? 10 : 1 / (dist + 0.001) };
+        }).filter(j => j.dist <= TOLERANCIA_MAXIMA).sort((a,b) => a.dist - b.dist).slice(0, 30);
+        renderizarCards(similares);
+    }
+
+    function renderizarCards(jogos) {
+        const dashboard = document.getElementById('dashboard');
+        document.getElementById('resultadoBusca').style.display = "block";
+        if (jogos.length === 0) { dashboard.innerHTML = "<p>Sem jogos similares.</p>"; return; }
+        let pesoTotal = 0; let stats = { gC: 0, gV: 0, vC: 0, vE: 0, vV: 0 };
+        jogos.forEach(j => {
+            const p = j.peso; pesoTotal += p;
+            stats.gC += (j['Placar Casa'] * p); stats.gV += (j['Placar Visitante'] * p);
+            if (j['Placar Casa'] > j['Placar Visitante']) stats.vC += p;
+            else if (j['Placar Casa'] === j['Placar Visitante']) stats.vE += p;
+            else stats.vV += p;
+        });
+        const calc = (val) => (val / pesoTotal * 100).toFixed(1);
+        dashboard.innerHTML = `
+            <div class="card"><h4>xG</h4> Casa: ${(stats.gC/pesoTotal).toFixed(2)}<br>Fora: ${(stats.gV/pesoTotal).toFixed(2)}</div>
+            <div class="card"><h4>Probabilidades</h4> 1: ${calc(stats.vC)}% | X: ${calc(stats.vE)}% | 2: ${calc(stats.vV)}%</div>
+        `;
+    }
+</script>
+</body>
+</html>
