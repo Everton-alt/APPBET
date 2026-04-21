@@ -141,6 +141,13 @@
     const SEU_EMAIL_ADM = "everton.cl@outlook.com"; 
     const SENHA_MESTRA = "Everton2026";
 
+    // Função auxiliar para limpar e converter números da planilha
+    function limparNumero(val) {
+        if (typeof val === 'number') return val;
+        if (!val) return 0;
+        return parseFloat(val.toString().replace(',', '.').replace('%', ''));
+    }
+
     async function verificarAcesso() {
         const email = document.getElementById('emailAcesso').value.trim().toLowerCase();
         const msgErro = document.getElementById('msgErro');
@@ -176,9 +183,13 @@
             const dados = await response.json();
             if (dados && dados.length > 0) {
                 dadosExcel = dados.map(j => ({
-                    casa: j.casa, visitante: j.visitante,
-                    pC: j.placar_casa, pV: j.placar_visitante,
-                    probC: parseFloat(j.prob_casa), probE: parseFloat(j.prob_empate), probF: parseFloat(j.prob_fora)
+                    casa: j["Equipe Casa"] || j.casa, 
+                    visitante: j["Equipe Visitante"] || j.visitante,
+                    pC: limparNumero(j["Placar Casa"] || j.placar_casa), 
+                    pV: limparNumero(j["Placar Visitante"] || j.placar_visitante),
+                    probC: limparNumero(j["Prob, Casa (1)"] || j.prob_casa), 
+                    probE: limparNumero(j["Prob, Empate (X)"] || j.prob_empate), 
+                    probF: limparNumero(j["Prob, Fora (2)"] || j.prob_fora)
                 }));
                 indicador.innerHTML = `<span class="status-badge badge-on">● BASE ONLINE: ${dadosExcel.length}</span>`;
             } else { indicador.innerHTML = `<span class="status-badge badge-off">○ Base Vazia</span>`; }
@@ -194,7 +205,7 @@
         let similares = dadosExcel.map(j => {
             let dist = Math.sqrt(Math.pow(j.probC - c, 2) + Math.pow(j.probE - e, 2) + Math.pow(j.probF - f, 2));
             return { ...j, dist, peso: 1 / (dist + 0.001) };
-        }).filter(j => j.dist <= 0.12).sort((a,b) => a.dist - b.dist).slice(0, 50);
+        }).filter(j => j.dist <= 0.15).sort((a,b) => a.dist - b.dist).slice(0, 50);
 
         processarEstatisticas(similares);
     }
@@ -308,15 +319,20 @@
         if (senha !== SENHA_MESTRA) return alert("Senha incorreta");
         const reader = new FileReader();
         reader.onload = async (evt) => {
-            const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
-            const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            const res = await fetch(`${URL_RENDER}/importar-base`, {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ jogos: data, senha: senha })
-            });
-            const resData = await res.json();
-            alert(resData.msg || "Base Atualizada!"); 
-            carregarBaseDoServidor();
+            try {
+                const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
+                const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                
+                const res = await fetch(`${URL_RENDER}/importar-base`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ jogos: data, senha: senha })
+                });
+                const resData = await res.json();
+                alert(resData.msg || "Base Atualizada!"); 
+                carregarBaseDoServidor();
+            } catch (err) {
+                alert("Erro ao processar arquivo Excel.");
+            }
         };
         reader.readAsArrayBuffer(e.target.files[0]);
     });
