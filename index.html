@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analista Pro - Full Analysis v3.5</title>
+    <title>Analista Pro - Full Analysis v3.6</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #2c3e50; --accent: #27ae60; --bg: #f8f9fa; --danger: #e74c3c; --gold: #f39c12; }
@@ -34,7 +34,7 @@
         .badge-off { background: #f8d7da; color: #721c24; }
         
         .grid-inputs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        input[type="number"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        input[type="number"], input[type="email"] { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
 
         .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top: 20px; }
         .card { border: 1px solid #eee; padding: 15px; border-radius: 8px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
@@ -45,6 +45,8 @@
         .top-picks { background: #fff9e6; border: 2px solid var(--gold); border-radius: 12px; padding: 20px; margin-bottom: 25px; display: none; }
         .pick-item { display: flex; align-items: center; justify-content: space-between; background: white; padding: 10px 15px; border-radius: 8px; margin-top: 10px; border-left: 5px solid var(--gold); }
         .pick-rank { font-weight: 900; color: var(--gold); font-size: 20px; }
+        
+        .adm-section { background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #ddd; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -52,19 +54,17 @@
 <div id="tela-bloqueio">
     <div class="login-box">
         <h2 style="color: var(--primary); margin: 0;">🎯 Analista Pro</h2>
-        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Controle de Acesso v3.5</p>
+        <p style="color: #666; font-size: 14px; margin-bottom: 20px;">Controle de Acesso v3.6</p>
         <input type="email" id="emailAcesso" placeholder="Seu e-mail cadastrado">
         <button style="width:100%" onclick="verificarAcesso()">ENTRAR NO SISTEMA</button>
-        
         <a href="https://www.asaas.com/c/g64s85n26xcdpvnj" target="_blank" class="btn-comprar">ASSINAR AGORA</a>
-        
         <p id="msgErro" style="color:red; margin-top:15px; font-weight:bold; display:none;"></p>
     </div>
 </div>
 
 <div class="container" id="app-principal">
     <div class="header-app">
-        <h2 style="margin:0;">🎯 Analista Pro <small style="font-size: 12px; color: #999;">v3.5</small></h2>
+        <h2 style="margin:0;">🎯 Analista Pro <small style="font-size: 12px; color: #999;">v3.6</small></h2>
         <div style="display: flex; align-items: center;">
             <div id="indicadorDados"></div>
             <button class="btn-sair" onclick="sair()">Sair</button>
@@ -72,14 +72,24 @@
     </div>
 
     <div class="tabs">
-        <div class="tab" id="tab1" onclick="openTab('aba-importar')">ADM: IMPORTAR</div>
+        <div class="tab" id="tab1" onclick="openTab('aba-importar')">ADMINISTRAÇÃO</div>
         <div class="tab active" id="tab2" onclick="openTab('aba-buscar')">ANÁLISE TÉCNICA</div>
     </div>
 
     <div id="aba-importar" class="content">
-        <div style="background: #f0f4f8; padding: 25px; border-radius: 12px; border: 2px dashed var(--primary); text-align: center;">
-            <h3 style="margin: 0; color: var(--primary);">📤 Upload de Base Global</h3>
-            <label for="fileInput" style="background:var(--primary); color:white; padding:10px 20px; border-radius:5px; cursor:pointer; display:inline-block; margin-top:15px;">SELECIONAR EXCEL</label>
+        <div class="adm-section">
+            <h3 style="margin-top:0; color:var(--primary);">👤 Cadastrar Usuário Manual</h3>
+            <p style="font-size: 13px; color: #666;">Libere acesso sem depender do Asaas.</p>
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                <input type="email" id="novoEmailUser" placeholder="E-mail do cliente">
+                <input type="number" id="diasAcesso" placeholder="Dias" value="31">
+            </div>
+            <button style="width: 100%; margin-top: 10px;" onclick="adicionarUsuarioManual()">LIBERAR ACESSO</button>
+        </div>
+
+        <div class="adm-section" style="border: 2px dashed var(--primary); text-align: center;">
+            <h3 style="margin: 0; color: var(--primary);">📤 Atualizar Base Global (Excel)</h3>
+            <label for="fileInput" style="background:var(--primary); color:white; padding:10px 20px; border-radius:5px; cursor:pointer; display:inline-block; margin-top:15px;">SELECIONAR PLANILHA</label>
             <input type="file" id="fileInput" accept=".xlsx, .xls" style="display: none;">
         </div>
     </div>
@@ -97,7 +107,6 @@
                 <h3 style="margin:0; color: var(--gold); display:flex; align-items:center; gap:10px;">⭐ AS 3 MELHORES ENTRADAS</h3>
                 <div id="picks-list"></div>
             </div>
-            
             <div class="dashboard" id="dashboard"></div>
         </div>
     </div>
@@ -107,6 +116,7 @@
     let dadosExcel = [];
     const URL_RENDER = "https://sistema-analisador.onrender.com";
     const SEU_EMAIL_ADM = "everton.cl@outlook.com"; 
+    const SENHA_MESTRA = "Everton2026";
 
     async function verificarAcesso() {
         const email = document.getElementById('emailAcesso').value.trim().toLowerCase();
@@ -130,7 +140,7 @@
                 msgErro.style.display = "block";
             }
         } catch (err) { 
-            msgErro.innerText = "Erro de conexão.";
+            msgErro.innerText = "Servidor Offline.";
             msgErro.style.display = "block";
         }
     }
@@ -150,6 +160,25 @@
                 indicador.innerHTML = `<span class="status-badge badge-on">● Online: ${dadosExcel.length}</span>`;
             } else { indicador.innerHTML = `<span class="status-badge badge-off">○ Base Vazia</span>`; }
         } catch (err) { indicador.innerHTML = `❌ Erro`; }
+    }
+
+    async function adicionarUsuarioManual() {
+        const email = document.getElementById('novoEmailUser').value;
+        const dias = document.getElementById('diasAcesso').value;
+        const senha = prompt("Confirme a Senha ADM:");
+
+        if (!email || !senha) return alert("Preencha o e-mail!");
+
+        try {
+            const response = await fetch(`${URL_RENDER}/adicionar-usuario`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, senha, dias })
+            });
+            const data = await response.json();
+            alert(data.msg || data.erro);
+            document.getElementById('novoEmailUser').value = "";
+        } catch (err) { alert("Erro ao conectar."); }
     }
 
     function buscarDados() {
@@ -190,11 +219,7 @@
             { nome: "Empate (X)", val: pc(s.vE) },
             { nome: "Vitória Fora (2)", val: pc(s.vV) },
             { nome: "Over 1.5 Gols", val: pc(s.o15) },
-            { nome: "Under 1.5 Gols", val: pc(s.u15) },
             { nome: "Over 2.5 Gols", val: pc(s.o25) },
-            { nome: "Under 2.5 Gols", val: pc(s.u25) },
-            { nome: "Over 3.5 Gols", val: pc(s.o35) },
-            { nome: "Under 3.5 Gols", val: pc(s.u35) },
             { nome: "Ambos Marcam", val: pc(s.ambos) },
             { nome: "1X (Casa ou Emp)", val: pc(s.vC + s.vE) },
             { nome: "X2 (Fora ou Emp)", val: pc(s.vE + s.vV) }
@@ -234,16 +259,18 @@
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
         const senha = prompt("Senha ADM:");
-        if (senha !== "Henrique2026") return alert("Incorreta");
+        if (senha !== SENHA_MESTRA) return alert("Incorreta");
         const reader = new FileReader();
         reader.onload = async (evt) => {
             const wb = XLSX.read(new Uint8Array(evt.target.result), {type:'array'});
             const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            await fetch(`${URL_RENDER}/importar-base`, {
+            const res = await fetch(`${URL_RENDER}/importar-base`, {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({ jogos: data, senha: senha })
             });
-            alert("Base Atualizada!"); carregarBaseDoServidor();
+            const resData = await res.json();
+            alert(resData.msg || "Base Atualizada!"); 
+            carregarBaseDoServidor();
         };
         reader.readAsArrayBuffer(e.target.files[0]);
     });
