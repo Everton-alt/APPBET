@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analista Pro - Full Analysis v3.7</title>
+    <title>Analista Pro - Full Analysis</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
@@ -42,7 +42,7 @@
         .btn-whatsapp { background: var(--whatsapp); margin-top: 10px; width: 100%; color: white; text-decoration: none; display: block; padding: 14px; border-radius: 8px; font-weight: 700; text-align: center; box-sizing: border-box; transition: 0.2s; }
         .btn-whatsapp:hover { filter: brightness(0.9); }
 
-        .btn-sair { background: #f1f5f9; color: #64748b; padding: 8px 16px; font-size: 13px; margin-left: 15px; border: 1px solid var(--border); width: auto; }
+        .btn-sair { background: #f1f5f9; color: #64748b; padding: 8px 16px; font-size: 13px; border: 1px solid var(--border); width: auto; margin-left: 15px; }
         .btn-danger { background: var(--danger); }
         
         /* INTERFACE PRINCIPAL */
@@ -83,7 +83,6 @@
         <p style="color: #64748b; font-size: 14px; margin-bottom: 25px;">Inteligência de Dados 2026</p>
         
         <input type="email" id="emailAcesso" placeholder="Seu e-mail de acesso">
-        
         <button onclick="verificarAcesso()">ENTRAR NO SISTEMA</button>
         
         <a href="https://www.asaas.com/c/g64s85n26xcdpvnj" target="_blank" class="btn-comprar">QUERO SER ASSINANTE</a>
@@ -123,15 +122,13 @@
                     <input type="number" id="diasAcesso" value="31">
                 </div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <button onclick="adicionarUsuarioManual()">SALVAR / REATIVAR</button>
-                <button class="btn-danger" onclick="excluirUsuario()">EXCLUIR USUÁRIO</button>
-            </div>
+            <button onclick="adicionarUsuarioManual()">SALVAR OU REATIVAR ACESSO</button>
         </div>
 
         <div class="adm-section" style="text-align:center; border: 2px dashed #cbd5e1;">
             <h3 style="margin:0;">📤 Atualizar Base Global (Excel)</h3>
-            <label for="fileInput" style="background:var(--primary); color:white; padding:12px 25px; border-radius:8px; cursor:pointer; display:inline-block; margin-top:15px; font-weight:700;">SELECIONAR PLANILHA</label>
+            <p style="font-size: 12px; color: #64748b;">Selecione o arquivo para sobrescrever os dados atuais.</p>
+            <label for="fileInput" style="background:var(--primary); color:white; padding:12px 25px; border-radius:8px; cursor:pointer; display:inline-block; margin-top:10px; font-weight:700;">SELECIONAR PLANILHA</label>
             <input type="file" id="fileInput" accept=".xlsx, .xls" style="display: none;">
         </div>
     </div>
@@ -157,8 +154,12 @@
 <script>
     let dadosExcel = [];
     const URL_RENDER = "https://sistema-analisador.onrender.com";
-    const SEU_EMAIL_ADM = "everton.cl@outlook.com"; 
-    const SENHA_MESTRA = "Everton2026";
+
+    // PROTEÇÃO CONTRA FERRAMENTAS DE DESENVOLVEDOR
+    document.addEventListener('contextmenu', event => event.preventDefault());
+    document.onkeydown = function(e) {
+        if (e.keyCode == 123 || (e.ctrlKey && e.shiftKey && e.keyCode == 73)) return false;
+    };
 
     function limparNumero(val) {
         if (typeof val === 'number') return val;
@@ -166,29 +167,37 @@
         return parseFloat(val.toString().replace(',', '.').replace('%', ''));
     }
 
+    // LOGIN COM VALIDAÇÃO DE ADM NO SERVIDOR
     async function verificarAcesso() {
-        const email = document.getElementById('emailAcesso').value.trim().toLowerCase();
+        const emailInput = document.getElementById('emailAcesso').value.trim().toLowerCase();
         const msgErro = document.getElementById('msgErro');
-        if(!email) return;
+        if(!emailInput) return;
+
         try {
             const response = await fetch(`${URL_RENDER}/validar`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email })
+                body: JSON.stringify({ email: emailInput })
             });
             const data = await response.json();
+            
             if (data.autorizado) {
                 document.getElementById('tela-bloqueio').style.display = 'none';
                 document.getElementById('app-principal').style.display = 'block';
-                localStorage.setItem('email_logado', email);
-                if (email === SEU_EMAIL_ADM) document.getElementById('tab1').style.display = 'block';
+                localStorage.setItem('email_logado', emailInput);
+                
+                // O servidor informa se este e-mail deve ver a aba de administração
+                if (data.is_admin) {
+                    document.getElementById('tab1').style.display = 'block';
+                }
+                
                 carregarBaseDoServidor();
             } else { 
                 msgErro.innerText = data.msg;
                 msgErro.style.display = "block";
             }
         } catch (err) { 
-            msgErro.innerText = "Servidor Offline.";
+            msgErro.innerText = "Falha na conexão com o servidor.";
             msgErro.style.display = "block";
         }
     }
@@ -211,11 +220,11 @@
                 }));
                 indicador.innerHTML = `<span class="status-badge badge-on">● BASE ONLINE: ${dadosExcel.length}</span>`;
             } else { indicador.innerHTML = `<span class="status-badge badge-off">○ Base Vazia</span>`; }
-        } catch (err) { indicador.innerHTML = `<span class="status-badge badge-off">❌ Erro</span>`; }
+        } catch (err) { indicador.innerHTML = `<span class="status-badge badge-off">❌ Erro de Sincronia</span>`; }
     }
 
     function buscarDados() {
-        if (dadosExcel.length === 0) return alert("Base vazia!");
+        if (dadosExcel.length === 0) return alert("Base de dados não carregada.");
         const c = parseFloat(document.getElementById('buscaCasa').value);
         const e = parseFloat(document.getElementById('buscaEmpate').value);
         const f = parseFloat(document.getElementById('buscaFora').value);
@@ -229,7 +238,7 @@
     }
 
     function processarEstatisticas(jogos) {
-        if (jogos.length === 0) return alert("Recomendamos a seleção de um confronto alternativo. No cenário atual, identificamos uma volatilidade acentuada nas odds, o que compromete a previsibilidade estatística e eleva a exposição ao risco. Sugerimos priorizar eventos com maior estabilidade técnica.");
+        if (jogos.length === 0) return alert("Dados insuficientes para este cenário de odds.");
         let pesoT = 0; 
         let s = { 
             vC:0, vE:0, vV:0, ambos:0, gC:0, gV:0,
@@ -247,11 +256,9 @@
             if (totalGols > 2.5) s.o25 += p;
             if (totalGols > 3.5) s.o35 += p;
             if (totalGols > 4.5) s.o45 += p;
-            if (totalGols < 0.5) s.u05 += p;
             if (totalGols < 1.5) s.u15 += p;
             if (totalGols < 2.5) s.u25 += p;
             if (totalGols < 3.5) s.u35 += p;
-            if (totalGols < 4.5) s.u45 += p;
             s.gC += (j.pC * p); s.gV += (j.pV * p);
         });
 
@@ -285,10 +292,10 @@
 
         document.getElementById('dashboard').innerHTML = `
             <div class="card"><h4>🏆 Principal</h4><ul class="stats-list"><li>Casa: <b>${pc(s.vC)}%</b></li><li>Empate: <b>${pc(s.vE)}%</b></li><li>Fora: <b>${pc(s.vV)}%</b></li><li>Ambos: <b>${pc(s.ambos)}%</b></li></ul></div>
-            <div class="card"><h4>🤝 Dupla Chance</h4><ul class="stats-list"><li>Casa ou Empate (1X): <b>${pc(s.vC+s.vE)}%</b></li><li>Casa ou Fora 12: <b>${pc(s.vC+s.vV)}%</b></li><li>Empate ou Fora X2: <b>${pc(s.vE+s.vV)}%</b></li></ul></div>
-            <div class="card"><h4>🔥 Mercado Over</h4><ul class="stats-list"><li>+0.5 Gols: <b>${pc(s.o05)}%</b></li><li>+1.5 Gols: <b>${pc(s.o15)}%</b></li><li>+2.5 Gols: <b>${pc(s.o25)}%</b></li><li>+3.5 Gols: <b>${pc(s.o35)}%</b></li><li>+4.5 Gols: <b>${pc(s.o45)}%</b></li></ul></div>
-            <div class="card"><h4>🛡️ Mercado Under</h4><ul class="stats-list"><li>-0.5 Gols: <b>${pc(s.u05)}%</b></li><li>-1.5 Gols: <b>${pc(s.u15)}%</b></li><li>-2.5 Gols: <b>${pc(s.u25)}%</b></li><li>-3.5 Gols: <b>${pc(s.u35)}%</b></li><li>-4.5 Gols: <b>${pc(s.u45)}%</b></li></ul></div>
-            <div class="card"><h4>📊 Médias</h4><ul class="stats-list"><li>xG Casa: <b>${(s.gC/pesoT).toFixed(2)}</b></li><li>xG Fora: <b>${(s.gV/pesoT).toFixed(2)}</b></li><li>Média geradas: <b>${totalJogos}</b></li></ul></div>
+            <div class="card"><h4>🤝 Dupla Chance</h4><ul class="stats-list"><li>1X: <b>${pc(s.vC+s.vE)}%</b></li><li>12: <b>${pc(s.vC+s.vV)}%</b></li><li>X2: <b>${pc(s.vE+s.vV)}%</b></li></ul></div>
+            <div class="card"><h4>🔥 Over Gols</h4><ul class="stats-list"><li>+1.5: <b>${pc(s.o15)}%</b></li><li>+2.5: <b>${pc(s.o25)}%</b></li><li>+3.5: <b>${pc(s.o35)}%</b></li></ul></div>
+            <div class="card"><h4>🛡️ Under Gols</h4><ul class="stats-list"><li>-1.5: <b>${pc(s.u15)}%</b></li><li>-2.5: <b>${pc(s.u25)}%</b></li><li>-3.5: <b>${pc(s.u35)}%</b></li></ul></div>
+            <div class="card"><h4>📊 Médias</h4><ul class="stats-list"><li>xG Casa: <b>${(s.gC/pesoT).toFixed(2)}</b></li><li>xG Fora: <b>${(s.gV/pesoT).toFixed(2)}</b></li><li>Amostra: <b>${totalJogos}</b></li></ul></div>
         `;
     }
 
@@ -302,7 +309,7 @@
     async function adicionarUsuarioManual() {
         const email = document.getElementById('novoEmailUser').value.trim();
         const dias = document.getElementById('diasAcesso').value;
-        const senha = prompt("Senha ADM:");
+        const senha = prompt("Digite a Senha Mestra:");
         if (!email || !senha) return;
         try {
             const res = await fetch(`${URL_RENDER}/adicionar-usuario`, {
@@ -311,29 +318,14 @@
             });
             const data = await res.json();
             alert(data.msg || data.erro);
-        } catch (e) { alert("Erro de conexão"); }
-    }
-
-    async function excluirUsuario() {
-        const email = document.getElementById('novoEmailUser').value.trim();
-        if (!email) return alert("Digite o e-mail no campo acima.");
-        if (!confirm(`Excluir acesso de ${email}?`)) return;
-        const senha = prompt("Senha ADM:");
-        try {
-            const res = await fetch(`${URL_RENDER}/excluir-usuario`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, senha })
-            });
-            const data = await res.json();
-            alert(data.msg || data.erro);
-        } catch (e) { alert("Erro de conexão"); }
+        } catch (e) { alert("Erro de comunicação."); }
     }
 
     function sair() { localStorage.removeItem('email_logado'); location.reload(); }
 
     document.getElementById('fileInput').addEventListener('change', function(e) {
-        const senha = prompt("Senha ADM:");
-        if (senha !== SENHA_MESTRA) return alert("Senha incorreta");
+        const senha = prompt("Confirme a Senha Mestra para importar:");
+        if (!senha) return;
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
@@ -346,7 +338,7 @@
                 const resData = await res.json();
                 alert(resData.msg || "Base Atualizada!"); 
                 carregarBaseDoServidor();
-            } catch (err) { alert("Erro ao processar Excel."); }
+            } catch (err) { alert("Erro ao ler o arquivo Excel."); }
         };
         reader.readAsArrayBuffer(e.target.files[0]);
     });
