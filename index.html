@@ -39,6 +39,7 @@
         /* BOTÕES */
         button { padding: 14px 24px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; transition: 0.2s; width: 100%; }
         button:hover { filter: brightness(1.1); }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
         
         .btn-comprar { background: var(--gold); margin-top: 15px; width: 100%; color: white; text-decoration: none; display: block; padding: 14px; border-radius: 8px; font-weight: 700; text-align: center; box-sizing: border-box; }
         
@@ -76,6 +77,22 @@
         .pick-item { display: flex; align-items: center; justify-content: space-between; background: white; padding: 12px 20px; border-radius: 10px; margin-top: 10px; border: 1px solid #fef3c7; }
         
         .adm-section { background: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 25px; width: 100%; box-sizing: border-box; }
+
+        /* ANIMAÇÃO DE CARREGAMENTO */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--accent);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 15px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .fade-in { animation: fadeIn 0.6s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -87,7 +104,8 @@
         
         <input type="email" id="emailAcesso" placeholder="Seu e-mail de acesso">
         
-        <button onclick="verificarAcesso()">ENTRAR NO SISTEMA</button>
+        <button id="btnEntrar" onclick="verificarAcesso()">ENTRAR NO SISTEMA</button>
+        <div id="loader-login" class="loader"></div>
         
         <a href="https://www.asaas.com/c/g64s85n26xcdpvnj" target="_blank" class="btn-comprar">QUERO SER ASSINANTE</a>
         
@@ -172,7 +190,17 @@
     async function verificarAcesso() {
         const email = document.getElementById('emailAcesso').value.trim().toLowerCase();
         const msgErro = document.getElementById('msgErro');
+        const btn = document.getElementById('btnEntrar');
+        const loader = document.getElementById('loader-login');
+
         if(!email) return;
+
+        // Inicia animação e trava botão
+        msgErro.style.display = "none";
+        btn.disabled = true;
+        btn.innerText = "VERIFICANDO...";
+        loader.style.display = "block";
+
         try {
             const response = await fetch(`${URL_RENDER}/validar`, {
                 method: 'POST',
@@ -180,19 +208,34 @@
                 body: JSON.stringify({ email: email })
             });
             const data = await response.json();
+
+            // Pequeno delay para a animação ser visível
+            await new Promise(r => setTimeout(r, 800));
+
             if (data.autorizado) {
                 document.getElementById('tela-bloqueio').style.display = 'none';
-                document.getElementById('app-principal').style.display = 'block';
+                const app = document.getElementById('app-principal');
+                app.style.display = 'block';
+                app.classList.add('fade-in');
+                
                 localStorage.setItem('email_logado', email);
                 if (email === SEU_EMAIL_ADM) document.getElementById('tab1').style.display = 'block';
                 carregarBaseDoServidor();
             } else { 
                 msgErro.innerText = data.msg;
                 msgErro.style.display = "block";
+                resetLoginBtn();
             }
         } catch (err) { 
             msgErro.innerText = "Servidor Offline.";
             msgErro.style.display = "block";
+            resetLoginBtn();
+        }
+
+        function resetLoginBtn() {
+            btn.disabled = false;
+            btn.innerText = "ENTRAR NO SISTEMA";
+            loader.style.display = "none";
         }
     }
 
